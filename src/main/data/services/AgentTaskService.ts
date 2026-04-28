@@ -22,6 +22,7 @@ import {
 import type { ListOptions } from '@types'
 import { CronExpressionParser } from 'cron-parser'
 import { and, asc, count, desc, eq, inArray, lte, ne } from 'drizzle-orm'
+import { v4 as uuidv4 } from 'uuid'
 
 const logger = loggerService.withContext('TaskService')
 
@@ -29,7 +30,7 @@ export class AgentTaskService {
   async createTask(agentId: string, req: CreateTaskDto): Promise<ScheduledTaskEntity> {
     await this.assertAutonomous(agentId)
 
-    const id = `task_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+    const id = uuidv4()
 
     const nextRun = this.computeInitialNextRun(req.scheduleType, req.scheduleValue)
 
@@ -168,7 +169,12 @@ export class AgentTaskService {
             if (updates.channelIds.length > 0) {
               const result = await tx
                 .insert(channelTaskSubscriptionsTable)
-                .values(updates.channelIds.map((channelId) => ({ channelId, taskId })))
+                .values(
+                  updates.channelIds.map((channelId) => ({
+                    channelId,
+                    taskId
+                  }))
+                )
                 .onConflictDoNothing()
               if (result.rowsAffected !== updates.channelIds.length) {
                 logger.warn('updateTaskById: inserted fewer channel rows than requested', {
@@ -260,7 +266,12 @@ export class AgentTaskService {
             if (updates.channelIds.length > 0) {
               const result = await tx
                 .insert(channelTaskSubscriptionsTable)
-                .values(updates.channelIds.map((channelId) => ({ channelId, taskId })))
+                .values(
+                  updates.channelIds.map((channelId) => ({
+                    channelId,
+                    taskId
+                  }))
+                )
                 .onConflictDoNothing()
               if (result.rowsAffected !== updates.channelIds.length) {
                 logger.warn('updateTask: inserted fewer channel rows than requested', {
@@ -316,7 +327,10 @@ export class AgentTaskService {
       .from(channelTaskSubscriptionsTable)
       .where(eq(channelTaskSubscriptionsTable.taskId, row.id))
     const entity = this.rowToEntity(row)
-    return { ...entity, channelIds: subs.map((s) => s.channelId) } as ScheduledTaskEntity
+    return {
+      ...entity,
+      channelIds: subs.map((s) => s.channelId)
+    } as ScheduledTaskEntity
   }
 
   /** Enrich multiple task rows with their subscribed channel_ids (batched). */
@@ -336,7 +350,10 @@ export class AgentTaskService {
     }
     return rows.map((row) => {
       const entity = this.rowToEntity(row)
-      return { ...entity, channelIds: subsByTask.get(row.id) ?? [] } as ScheduledTaskEntity
+      return {
+        ...entity,
+        channelIds: subsByTask.get(row.id) ?? []
+      } as ScheduledTaskEntity
     })
   }
 
@@ -397,7 +414,10 @@ export class AgentTaskService {
           .set({ nextRun: Date.now() + 60_000, updatedAt: Date.now() })
           .where(eq(scheduledTasksTable.id, taskId))
       } catch (fallbackError) {
-        logger.error('updateTaskAfterRun fallback also failed', { taskId, fallbackError })
+        logger.error('updateTaskAfterRun fallback also failed', {
+          taskId,
+          fallbackError
+        })
       }
     }
   }
@@ -486,7 +506,10 @@ export class AgentTaskService {
       const minutes = parseInt(task.scheduleValue, 10)
       const ms = minutes * 60_000
       if (!ms || ms <= 0) {
-        logger.warn('Invalid interval value', { taskId: task.id, value: task.scheduleValue })
+        logger.warn('Invalid interval value', {
+          taskId: task.id,
+          value: task.scheduleValue
+        })
         return now + 60_000
       }
 

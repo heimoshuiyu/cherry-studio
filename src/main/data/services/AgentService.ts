@@ -18,6 +18,7 @@ import {
 } from '@shared/data/api/schemas/agents'
 import type { AgentType, ListOptions } from '@types'
 import { and, asc, count, desc, eq, isNull, sql } from 'drizzle-orm'
+import { v4 as uuidv4 } from 'uuid'
 
 const logger = loggerService.withContext('AgentService')
 
@@ -44,7 +45,7 @@ export class AgentService {
   static readonly DEFAULT_AGENT_ID = CHERRY_CLAW_AGENT_ID
 
   async createAgent(req: CreateAgentDto): Promise<AgentEntity> {
-    const id = `agent_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+    const id = uuidv4()
 
     // Compute workspace paths (pure — directory creation is the caller's responsibility).
     const resolvedPaths = computeWorkspacePaths(req.accessiblePaths, id)
@@ -152,7 +153,9 @@ export class AgentService {
     if (!existing) return null
 
     if (updates.accessiblePaths !== undefined && updates.accessiblePaths.length === 0) {
-      throw DataApiErrorFactory.validation({ accessiblePaths: ['must not be empty'] })
+      throw DataApiErrorFactory.validation({
+        accessiblePaths: ['must not be empty']
+      })
     }
 
     const updateData: Partial<AgentRow> = {
