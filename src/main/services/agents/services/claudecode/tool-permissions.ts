@@ -217,7 +217,7 @@ type PromptForToolApprovalOptions = {
   autoApprove?: boolean
 
   // NOTICE: This ID is namespaced with session ID, not the raw SDK tool call ID.
-  // Format: `${sessionId}:${rawToolCallId}`, e.g., `session_123:WebFetch_0`
+  // Format: `${sessionId}:${rawToolCallId}`, e.g., `550e8400-e29b-41d4-a716-446655440000:WebFetch_0`
   toolCallId: string
 }
 
