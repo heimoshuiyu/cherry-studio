@@ -1,0 +1,1 @@
+ALTER TABLE `agent` ADD `is_builtin` integer DEFAULT false NOT NULL;

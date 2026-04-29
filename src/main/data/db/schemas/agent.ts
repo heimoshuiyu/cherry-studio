@@ -17,6 +17,7 @@ export const agentTable = sqliteTable(
     mcps: text({ mode: 'json' }).$type<string[]>(),
     allowedTools: text({ mode: 'json' }).$type<string[]>(),
     configuration: text({ mode: 'json' }).$type<Record<string, unknown>>(),
+    isBuiltin: integer({ mode: 'boolean' }).notNull().default(false),
     sortOrder: integer().notNull().default(0),
     ...createUpdateDeleteTimestamps
   },
