@@ -20,7 +20,7 @@ import { installBuiltinSkills } from '@main/utils/builtinSkills'
 import type { CreateAgentDto, UpdateAgentDto } from '@shared/data/api/schemas/agents'
 
 import { schedulerService } from '../SchedulerService'
-import { CHERRY_ASSISTANT_AGENT_ID, CHERRY_CLAW_AGENT_ID } from './BuiltinAgentIds'
+import { CHERRY_ASSISTANT_BUILTIN_NAME, CHERRY_CLAW_BUILTIN_NAME } from './BuiltinAgentIds'
 import { provisionBuiltinAgent } from './BuiltinAgentProvisioner'
 
 const logger = loggerService.withContext('BuiltinAgentBootstrap')
@@ -45,39 +45,39 @@ export async function bootstrapBuiltinAgents(): Promise<void> {
   await Promise.all([initCherryClaw(), initCherryAssistant()])
 }
 
-function clearRetry(agentId: string): void {
-  const timer = retryTimers.get(agentId)
+function clearRetry(retryKey: string): void {
+  const timer = retryTimers.get(retryKey)
   if (timer) {
     clearTimeout(timer)
-    retryTimers.delete(agentId)
+    retryTimers.delete(retryKey)
   }
-  retryAttempts.delete(agentId)
+  retryAttempts.delete(retryKey)
 }
 
-function scheduleRetry(agentId: string, label: string, initFn: () => Promise<void>): void {
-  if (retryTimers.has(agentId)) {
+function scheduleRetry(retryKey: string, label: string, initFn: () => Promise<void>): void {
+  if (retryTimers.has(retryKey)) {
     return
   }
 
-  const attempt = retryAttempts.get(agentId) ?? 0
+  const attempt = retryAttempts.get(retryKey) ?? 0
   const delay = RETRY_DELAYS_MS[attempt]
   if (delay === undefined) {
-    logger.info(`Built-in ${label} bootstrap retries exhausted`, { agentId, attempts: attempt })
+    logger.info(`Built-in ${label} bootstrap retries exhausted`, { retryKey, attempts: attempt })
     return
   }
 
-  retryAttempts.set(agentId, attempt + 1)
+  retryAttempts.set(retryKey, attempt + 1)
   logger.info(`Scheduling built-in ${label} bootstrap retry`, {
-    agentId,
+    retryKey,
     attempt: attempt + 1,
     delayMs: delay
   })
 
   const timer = setTimeout(() => {
-    retryTimers.delete(agentId)
+    retryTimers.delete(retryKey)
     void initFn()
   }, delay)
-  retryTimers.set(agentId, timer)
+  retryTimers.set(retryKey, timer)
 }
 
 async function ensureDefaultSession(agentId: string, label: string): Promise<void> {
@@ -89,14 +89,14 @@ async function ensureDefaultSession(agentId: string, label: string): Promise<voi
 }
 
 async function handleInitResult(
-  agentId: string,
+  retryKey: string,
   label: string,
   result: BuiltinAgentInitResult,
   initFn: () => Promise<void>,
   onReady?: (resolvedAgentId: string) => Promise<void>
 ): Promise<void> {
   if (result.agentId) {
-    clearRetry(agentId)
+    clearRetry(retryKey)
     await ensureDefaultSession(result.agentId, label)
     if (onReady) {
       await onReady(result.agentId)
@@ -105,27 +105,27 @@ async function handleInitResult(
   }
 
   if (result.skippedReason === 'deleted') {
-    clearRetry(agentId)
+    clearRetry(retryKey)
     return
   }
 
-  scheduleRetry(agentId, label, initFn)
+  scheduleRetry(retryKey, label, initFn)
 }
 
 // ── CherryClaw ──────────────────────────────────────────────────────
 
 async function initDefaultCherryClawAgent(): Promise<BuiltinAgentInitResult> {
-  const id = CHERRY_CLAW_AGENT_ID
+  const builtinName = CHERRY_CLAW_BUILTIN_NAME
   try {
-    const status = await agentService.findAgentIncludingDeleted(id)
+    const status = await agentService.findBuiltinAgentByName(builtinName)
 
     if (status?.deletedAt) {
-      logger.info('Default CherryClaw agent was deleted by user — skipping recreation', { id })
+      logger.info('Default CherryClaw agent was deleted by user — skipping recreation', { agentId: status.id })
       return { agentId: null, skippedReason: 'deleted' }
     }
 
     if (status) {
-      return { agentId: id }
+      return { agentId: status.id }
     }
 
     const modelsRes = await modelsService.getModels({ providerType: 'anthropic', limit: 1 })
@@ -149,18 +149,18 @@ async function initDefaultCherryClawAgent(): Promise<BuiltinAgentInitResult> {
 
     await validateAgentModels('claude-code', { model: firstModel.id })
 
-    const resolvedPaths = resolveAccessiblePaths([], id)
+    const resolvedPaths = resolveAccessiblePaths([], builtinName)
 
     const req: CreateAgentDto = {
       type: 'claude-code',
-      name: 'Cherry Claw',
+      name: builtinName,
       description: 'Default autonomous CherryClaw agent',
       model: firstModel.id,
       accessiblePaths: resolvedPaths,
       configuration
     }
 
-    const agent = await agentService.createAgent(req)
+    const agent = await agentService.createAgent(req, { isBuiltin: true })
 
     const workspace = agent.accessiblePaths?.[0]
     if (workspace) {
@@ -171,13 +171,13 @@ async function initDefaultCherryClawAgent(): Promise<BuiltinAgentInitResult> {
       await skillService.initSkillsForAgent(agent.id, workspace)
     } catch (error) {
       logger.warn('Failed to seed builtin skills for CherryClaw agent', {
-        agentId: id,
+        agentId: agent.id,
         error: error instanceof Error ? error.message : String(error)
       })
     }
 
-    logger.info('Created default CherryClaw agent', { id })
-    return { agentId: id }
+    logger.info('Created default CherryClaw agent', { agentId: agent.id })
+    return { agentId: agent.id }
   } catch (error) {
     if (error instanceof AgentModelValidationError) {
       logger.warn('Skipping default CherryClaw agent: no compatible model', error)
@@ -191,7 +191,7 @@ async function initDefaultCherryClawAgent(): Promise<BuiltinAgentInitResult> {
 async function initCherryClaw(): Promise<void> {
   try {
     const result = await initDefaultCherryClawAgent()
-    await handleInitResult(CHERRY_CLAW_AGENT_ID, 'CherryClaw', result, initCherryClaw, async (agentId) => {
+    await handleInitResult(CHERRY_CLAW_BUILTIN_NAME, 'CherryClaw', result, initCherryClaw, async (agentId) => {
       await schedulerService.ensureHeartbeatTask(agentId, 30)
     })
   } catch (error) {
@@ -201,10 +201,8 @@ async function initCherryClaw(): Promise<void> {
 
 // ── Cherry Assistant ────────────────────────────────────────────────
 
-export { CHERRY_ASSISTANT_AGENT_ID }
-
 async function initBuiltinAgent(opts: {
-  id: string
+  builtinName: string
   builtinRole: string
   provisionWorkspace: (
     workspacePath: string,
@@ -213,27 +211,27 @@ async function initBuiltinAgent(opts: {
     { name?: string; description?: string; instructions?: string; configuration?: Record<string, unknown> } | undefined
   >
 }): Promise<BuiltinAgentInitResult> {
-  const { id, builtinRole, provisionWorkspace } = opts
+  const { builtinName, builtinRole, provisionWorkspace } = opts
   try {
-    const status = await agentService.findAgentIncludingDeleted(id)
+    const status = await agentService.findBuiltinAgentByName(builtinName)
 
     if (status?.deletedAt) {
-      logger.info(`Built-in ${builtinRole} agent was deleted by user — skipping recreation`, { id })
+      logger.info(`Built-in ${builtinRole} agent was deleted by user — skipping recreation`, { agentId: status.id })
       return { agentId: null, skippedReason: 'deleted' }
     }
 
     if (status) {
       // Sync localized description/instructions on every startup.
-      const resolvedPaths = resolveAccessiblePaths([], id)
+      const resolvedPaths = resolveAccessiblePaths(status.accessiblePaths ?? [], builtinName)
       const workspace = resolvedPaths[0]
       const agentConfig = workspace ? await provisionWorkspace(workspace, builtinRole) : undefined
       if (agentConfig && (agentConfig.description || agentConfig.instructions)) {
         const updateData: UpdateAgentDto = {}
         if (agentConfig.description) updateData.description = agentConfig.description
         if (agentConfig.instructions) updateData.instructions = agentConfig.instructions
-        await agentService.updateAgent(id, updateData)
+        await agentService.updateAgent(status.id, updateData)
       }
-      return { agentId: id }
+      return { agentId: status.id }
     }
 
     const modelsRes = await modelsService.getModels({ providerType: 'anthropic', limit: 1 })
@@ -245,7 +243,7 @@ async function initBuiltinAgent(opts: {
 
     await validateAgentModels('claude-code', { model: firstModel.id })
 
-    const resolvedPaths = resolveAccessiblePaths([], id)
+    const resolvedPaths = resolveAccessiblePaths([], builtinName)
     const workspace = resolvedPaths[0]
     const agentConfig = workspace ? await provisionWorkspace(workspace, builtinRole) : undefined
 
@@ -258,7 +256,7 @@ async function initBuiltinAgent(opts: {
 
     const req: CreateAgentDto = {
       type: 'claude-code',
-      name: agentConfig?.name || builtinRole,
+      name: builtinName,
       description: agentConfig?.description || `Built-in ${builtinRole} agent`,
       instructions: agentConfig?.instructions || 'You are a helpful assistant.',
       model: firstModel.id,
@@ -266,19 +264,19 @@ async function initBuiltinAgent(opts: {
       configuration
     }
 
-    const agent = await agentService.createAgent(req)
+    const agent = await agentService.createAgent(req, { isBuiltin: true })
 
     try {
       await skillService.initSkillsForAgent(agent.id, resolvedPaths?.[0])
     } catch (error) {
       logger.warn('Failed to seed builtin skills for built-in agent', {
-        agentId: id,
+        agentId: agent.id,
         error: error instanceof Error ? error.message : String(error)
       })
     }
 
-    logger.info(`Created built-in ${builtinRole} agent`, { id })
-    return { agentId: id }
+    logger.info(`Created built-in ${builtinRole} agent`, { agentId: agent.id })
+    return { agentId: agent.id }
   } catch (error) {
     if (error instanceof AgentModelValidationError) {
       logger.warn(`Skipping built-in ${builtinRole} agent: no compatible model`, error)
@@ -292,11 +290,11 @@ async function initBuiltinAgent(opts: {
 async function initCherryAssistant(): Promise<void> {
   try {
     const result = await initBuiltinAgent({
-      id: CHERRY_ASSISTANT_AGENT_ID,
+      builtinName: CHERRY_ASSISTANT_BUILTIN_NAME,
       builtinRole: 'assistant',
       provisionWorkspace: provisionBuiltinAgent
     })
-    await handleInitResult(CHERRY_ASSISTANT_AGENT_ID, 'Cherry Assistant', result, initCherryAssistant)
+    await handleInitResult(CHERRY_ASSISTANT_BUILTIN_NAME, 'Cherry Assistant', result, initCherryAssistant)
   } catch (error) {
     logger.warn('Failed to init Cherry Assistant agent:', error as Error)
   }

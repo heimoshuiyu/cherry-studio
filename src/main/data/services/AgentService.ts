@@ -8,7 +8,6 @@ import { defaultHandlersFor, withSqliteErrors } from '@data/db/sqliteErrors'
 import type { DbOrTx } from '@data/db/types'
 import { nullsToUndefined, timestampToISO } from '@data/services/utils/rowMappers'
 import { loggerService } from '@logger'
-import { CHERRY_CLAW_AGENT_ID, isBuiltinAgentId } from '@main/services/agents/services/builtin/BuiltinAgentIds'
 import { DataApiErrorFactory } from '@shared/data/api'
 import {
   AGENT_MUTABLE_FIELDS,
@@ -42,9 +41,7 @@ function computeWorkspacePaths(paths: string[] | undefined, id: string): string[
 }
 
 export class AgentService {
-  static readonly DEFAULT_AGENT_ID = CHERRY_CLAW_AGENT_ID
-
-  async createAgent(req: CreateAgentDto): Promise<AgentEntity> {
+  async createAgent(req: CreateAgentDto, opts: { isBuiltin?: boolean } = {}): Promise<AgentEntity> {
     const id = uuidv4()
 
     // Compute workspace paths (pure — directory creation is the caller's responsibility).
@@ -62,6 +59,7 @@ export class AgentService {
       mcps: req.mcps ?? null,
       allowedTools: req.allowedTools ?? null,
       configuration: req.configuration ?? null,
+      isBuiltin: opts.isBuiltin ?? false,
       accessiblePaths: resolvedPaths,
       sortOrder: 0
     }
@@ -166,6 +164,18 @@ export class AgentService {
     const shouldReplace = options.replace ?? false
 
     for (const field of replaceableEntityFields) {
+      if (existing.isBuiltin && field === 'name') {
+        if (Object.prototype.hasOwnProperty.call(updates, field)) {
+          const nextName = updates.name?.trim()
+          if (nextName !== undefined && nextName !== existing.name) {
+            throw DataApiErrorFactory.validation({
+              name: ['cannot be changed for builtin agents']
+            })
+          }
+        }
+        continue
+      }
+
       if (shouldReplace || Object.prototype.hasOwnProperty.call(updates, field)) {
         if (Object.prototype.hasOwnProperty.call(updates, field)) {
           const value = updates[field as keyof typeof updates]
@@ -263,7 +273,7 @@ export class AgentService {
       return false
     }
 
-    if (isBuiltinAgentId(id)) {
+    if (agent.isBuiltin) {
       const deletedAt = Date.now()
       const updatedAt = Date.now()
 
@@ -295,11 +305,19 @@ export class AgentService {
     return !!result
   }
 
-  /** Returns the agent row regardless of soft-deletion, for bootstrap use. */
-  async findAgentIncludingDeleted(id: string): Promise<{ deletedAt: number | null } | null> {
-    const row = await this.findAgentRow(id, { includeDeleted: true })
-    if (!row) return null
-    return { deletedAt: row.deletedAt ?? null }
+  async findBuiltinAgentByName(name: string): Promise<AgentRow | null> {
+    const database = application.get('DbService').getDb()
+    const rows = await database
+      .select()
+      .from(agentsTable)
+      .where(and(eq(agentsTable.isBuiltin, true), eq(agentsTable.name, name)))
+      .limit(2)
+
+    if (rows.length > 1) {
+      throw DataApiErrorFactory.invalidOperation('find builtin agent', `multiple builtin agents named "${name}" found`)
+    }
+
+    return rows[0] ?? null
   }
 }
 
