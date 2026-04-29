@@ -64,6 +64,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
   const { addAgent } = useAgents()
   const { updateAgent } = useUpdateAgent()
   const isEditing = (agent?: AgentWithTools) => agent !== undefined
+  const isEditingBuiltinAgent = agent?.isBuiltin === true
 
   const [form, setForm] = useState<BaseAgentForm>(() => buildAgentForm(agent))
   const [gitBashPathInfo, setGitBashPathInfo] = useState<GitBashPathInfo>({ path: null, source: null })
@@ -257,10 +258,11 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
       description: form.description,
       instructions: form.instructions,
       configuration: form.configuration,
+      isBuiltin: agent?.isBuiltin ?? false,
       createdAt: agent?.createdAt ?? new Date().toISOString(),
       updatedAt: agent?.updatedAt ?? new Date().toISOString()
     }),
-    [form, agent?.id, agent?.createdAt, agent?.updatedAt]
+    [form, agent?.id, agent?.isBuiltin, agent?.createdAt, agent?.updatedAt]
   )
 
   const handleModelSelect = useCallback(async (model: ApiModel) => {
@@ -310,7 +312,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
 
         const updatePayload = {
           id: agent.id,
-          name: form.name,
+          name: isEditingBuiltinAgent ? agent.name : form.name,
           description: form.description,
           instructions: form.instructions,
           model: form.model,
@@ -358,6 +360,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
       form.allowedTools,
       form.configuration,
       agent,
+      isEditingBuiltinAgent,
       t,
       updateAgent,
       afterSubmit,
@@ -386,7 +389,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
                 <Label>
                   {t('common.name')} <RequiredMark>*</RequiredMark>
                 </Label>
-                <Input value={form.name} onChange={onNameChange} required />
+                <Input value={form.name} onChange={onNameChange} disabled={isEditingBuiltinAgent} required />
               </FormItem>
             </FormRow>
 

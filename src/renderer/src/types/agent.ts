@@ -174,6 +174,7 @@ export const isAgentBaseWithId = (value: unknown): value is AgentBaseWithId => {
 export const AgentEntitySchema = AgentBaseSchema.extend({
   id: z.string(),
   type: AgentTypeSchema,
+  isBuiltin: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime()
 })

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
-  mockFindAgentIncludingDeleted,
+  mockFindBuiltinAgentByName,
   mockCreateAgent,
   mockUpdateAgent,
   mockGetModels,
@@ -15,7 +15,7 @@ const {
   mockInitSkillsForAgent,
   mockProvisionBuiltinAgent
 } = vi.hoisted(() => ({
-  mockFindAgentIncludingDeleted: vi.fn(),
+  mockFindBuiltinAgentByName: vi.fn(),
   mockCreateAgent: vi.fn(),
   mockUpdateAgent: vi.fn(),
   mockGetModels: vi.fn(),
@@ -36,7 +36,7 @@ vi.mock('@main/utils/builtinSkills', () => ({
 
 vi.mock('@data/services/AgentService', () => ({
   agentService: {
-    findAgentIncludingDeleted: mockFindAgentIncludingDeleted,
+    findBuiltinAgentByName: mockFindBuiltinAgentByName,
     createAgent: mockCreateAgent,
     updateAgent: mockUpdateAgent
   }
@@ -94,7 +94,10 @@ describe('bootstrapBuiltinAgents', () => {
     mockSeedWorkspaceTemplates.mockResolvedValue(undefined)
     mockInitSkillsForAgent.mockResolvedValue(undefined)
     mockProvisionBuiltinAgent.mockResolvedValue(undefined)
-    mockCreateAgent.mockResolvedValue({ id: 'cherry-claw-default', accessiblePaths: ['/tmp/workspace'] })
+    mockCreateAgent.mockResolvedValue({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      accessiblePaths: ['/tmp/workspace']
+    })
     mockUpdateAgent.mockResolvedValue({})
   })
 
@@ -104,7 +107,7 @@ describe('bootstrapBuiltinAgents', () => {
 
   it('retries built-in bootstrap when no model is available yet', async () => {
     // First attempt: no model for either agent → both skip
-    mockFindAgentIncludingDeleted.mockResolvedValue(null)
+    mockFindBuiltinAgentByName.mockResolvedValue(null)
     mockGetModels
       .mockResolvedValueOnce({ data: [] }) // CherryClaw: no model
       .mockResolvedValueOnce({ data: [] }) // CherryAssistant: no model
@@ -121,14 +124,14 @@ describe('bootstrapBuiltinAgents', () => {
     await vi.advanceTimersByTimeAsync(5000)
 
     expect(mockCreateAgent).toHaveBeenCalledTimes(1)
-    expect(mockListSessions).toHaveBeenCalledWith('cherry-claw-default', { limit: 1 })
-    expect(mockCreateSession).toHaveBeenCalledWith('cherry-claw-default', {})
-    expect(mockEnsureHeartbeatTask).toHaveBeenCalledWith('cherry-claw-default', 30)
+    expect(mockListSessions).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440000', { limit: 1 })
+    expect(mockCreateSession).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440000', {})
+    expect(mockEnsureHeartbeatTask).toHaveBeenCalledWith('550e8400-e29b-41d4-a716-446655440000', 30)
   })
 
   it('does not retry built-in agents deleted by the user', async () => {
     // Both agents are soft-deleted
-    mockFindAgentIncludingDeleted.mockResolvedValue({ id: 'some-id', deletedAt: Date.now() })
+    mockFindBuiltinAgentByName.mockResolvedValue({ id: 'some-id', deletedAt: Date.now() })
 
     const { bootstrapBuiltinAgents } = await import('../BuiltinAgentBootstrap')
 

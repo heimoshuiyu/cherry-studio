@@ -17,12 +17,13 @@ export const NameSetting = ({ base, update }: NameSettingsProps) => {
   const [name, setName] = useState<string | undefined>(base?.name?.trim())
 
   const updateName = async (name: UpdateAgentBaseForm['name']) => {
-    if (!base) return
+    if (!base || isBuiltinAgent) return
     return update({ id: base.id, name: name?.trim() })
   }
 
   // Avatar logic
   const isAgent = isAgentEntity(base)
+  const isBuiltinAgent = isAgent && base.isBuiltin
   const isDefault = isAgent ? isAgentType(base.configuration?.avatar) : false
   const [emoji, setEmoji] = useState(isAgent && !isDefault ? (base.configuration?.avatar ?? '⭐️') : '⭐️')
 
@@ -69,6 +70,7 @@ export const NameSetting = ({ base, update }: NameSettingsProps) => {
             placeholder={t('common.agent_one') + t('common.name')}
             value={name}
             onChange={(e) => setName(e.target.value)}
+            disabled={isBuiltinAgent}
             onBlur={() => {
               if (name !== base.name) {
                 void updateName(name)

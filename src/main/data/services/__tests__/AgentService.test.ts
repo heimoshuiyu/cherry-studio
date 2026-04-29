@@ -70,15 +70,26 @@ describe('AgentService', () => {
     })
 
     it('soft-deletes a builtin agent by setting deletedAt', async () => {
-      await insertAgent({ id: 'cherry-claw-default' })
+      const { id } = await insertAgent({ isBuiltin: true })
 
-      const deleted = await agentService.deleteAgent('cherry-claw-default')
+      const deleted = await agentService.deleteAgent(id)
 
       expect(deleted).toBe(true)
       const [row] = await dbh.db.select().from(agentTable)
       expect(row?.deletedAt).toBeTruthy()
       // Row still exists in the table
-      expect(row?.id).toBe('cherry-claw-default')
+      expect(row?.id).toBe(id)
+    })
+
+    it('rejects builtin agent name changes', async () => {
+      const { id } = await insertAgent({ isBuiltin: true, name: 'Cherry Claw' })
+
+      await expect(agentService.updateAgent(id, { name: 'Renamed Claw' })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR'
+      })
+
+      const [row] = await dbh.db.select().from(agentTable)
+      expect(row?.name).toBe('Cherry Claw')
     })
   })
 

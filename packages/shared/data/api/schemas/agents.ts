@@ -78,6 +78,7 @@ export const SESSION_MUTABLE_FIELDS = {
 export const AgentEntitySchema = AgentBaseSchema.extend({
   id: z.string(),
   type: z.enum(['claude-code']),
+  isBuiltin: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string()
 })
