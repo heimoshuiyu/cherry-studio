@@ -5,7 +5,7 @@ import { agentSessionMessageTable } from '@data/db/schemas/agentSessionMessage'
 import { agentSkillTable } from '@data/db/schemas/agentSkill'
 import { agentTaskRunLogTable, agentTaskTable } from '@data/db/schemas/agentTask'
 import type { DbType, ISeeder } from '@data/db/types'
-import { eq, like, sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 
 export class AgentIdMigrationSeeder implements ISeeder {
@@ -14,15 +14,19 @@ export class AgentIdMigrationSeeder implements ISeeder {
   readonly description = 'Migrate agent/session/task rows with old-format prefix IDs to UUID v4'
 
   async run(db: DbType): Promise<void> {
-    const oldAgents = await db.select({ id: agentTable.id }).from(agentTable).where(like(agentTable.id, 'agent_%'))
+    // GLOB treats _ literally (unlike LIKE where _ is a single-char wildcard)
+    const oldAgents = await db
+      .select({ id: agentTable.id })
+      .from(agentTable)
+      .where(sql`${agentTable.id} GLOB 'agent_*'`)
     const oldSessions = await db
       .select({ id: agentSessionTable.id })
       .from(agentSessionTable)
-      .where(like(agentSessionTable.id, 'session_%'))
+      .where(sql`${agentSessionTable.id} GLOB 'session_*'`)
     const oldTasks = await db
       .select({ id: agentTaskTable.id })
       .from(agentTaskTable)
-      .where(like(agentTaskTable.id, 'task_%'))
+      .where(sql`${agentTaskTable.id} GLOB 'task_*'`)
 
     if (oldAgents.length === 0 && oldSessions.length === 0 && oldTasks.length === 0) return
 
